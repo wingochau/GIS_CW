@@ -1,0 +1,223 @@
+#packages
+library(spatstat)
+library(here)
+library(sp)
+library(rgeos)
+library(maptools)
+library(GISTools)
+library(tmap)
+library(sf)
+library(geojson)
+library(geojsonio)
+library(tmaptools)
+library(tidyverse)
+library(ggpubr)
+library(rmapshaper)
+library(janitor)
+library(sqldf)
+
+################################################################################################################
+
+##Descriptive statistics
+#Population
+#Read csv
+hkpop_csv <- read_csv("data/Population_districts_092020.CSV")
+hkpop_csv <- clean_names(hkpop_csv)
+
+
+#Read Hong Kong map
+HKdistricts <- st_read(here::here("data","Hong_Kong_18_Districts-shp", "HKDistrict18.shp")) %>%
+  st_transform(.,2326)
+#Sort by alphabetic order
+HKdistricts <- HKdistricts[order(HKdistricts$ENAME),]
+
+
+#Adjusting csv
+HKpop <- hkpop_csv[,4] %>%
+mutate(hkpop_csv[,1]) %>%
+dplyr::rename(ENAME= 'district_council_district') %>%
+mutate(hkpop_csv[,8]) %>%
+mutate(hkpop_csv[,9])
+
+#Change to SF
+hkpop_sf1 = st_as_sf(HKpop, coords = c("latitude","longitude"), crs = 2326)
+qtm(hkpop_sf1)
+
+#Function
+Joinfun <- function(data1, data2){
+
+output<- data1%>%
+  st_join(data2,.) 
+
+  return(output)
+}
+
+Population <- Joinfun(hkpop_sf1, HKdistricts)
+
+Population <-Population %>%
+mutate('Population count' = hkpop_sf1$both_sexes)
+
+tmap_mode("plot")
+
+# set the breaks
+# for our mapped data
+breaks = c(100000, 200000, 300000, 400000, 500000, 600000, 700000) 
+
+# plot map
+tm1 <- tm_shape(Population) + 
+  tm_polygons("Population count", 
+              breaks=breaks,
+              palette="BuGn", size=0.9)+
+  tm_legend(show=TRUE, position=c("right","bottom"), text.size=0.9)+
+  tm_layout(frame=FALSE)+
+  tm_scale_bar(position=c("left", "top"))+
+  tm_compass(north=0, position=c("left","top")
+  )
+
+
+################################################################################################################
+
+#histogram with shape
+plot(HKoutline$geom)
+
+HKoutSIMPLE<-HKoutline %>%
+  ms_simplify(.,keep=0.05)
+
+plot(HKoutSIMPLE$geom)
+
+#histogram
+x <- hkpop_csv$both_sexes
+h<-hist(x, breaks=10, col="white", xlab="Hong Kong Population",
+   main="Histogram")
+xfit<-seq(min(x),max(x),length=40)
+yfit<-dnorm(xfit,mean=mean(x),sd=sd(x))
+yfit <- yfit*diff(h$mids[1:2])*length(x)
+lines(xfit, yfit, col="blue", lwd=3)
+
+#Faceted histogram
+ <- HKpop %>%
+mutate(HKpop, Districts = ("Central & Western" +"Wan Chai"+ "Eastern"+ "Southern"+ "Yau Tsim Mong"+ "Sham Shui Po"+ "Kowloon City"+ "Wong Tai Sin"+ "Kwun Tong"+ "Kwai Tsing"+ "Tsuen Wan"+ "Tuen Mun"+ "Yuen Long"+ "North"+ "Tai Po"+ "Sha Tin"+ "Sai Kung"+ "Islands"))
+
+################################################################################################################
+
+#Hong Kong outline
+HKoutline <- st_read(here("data", "gadm36_HKG_gpkg", "gadm36_HKG.gpkg"), 
+                      layer='gadm36_HKG_0') %>% 
+  st_set_crs(4326)
+
+HKoutlinePROJECTED <- HKoutline %>%
+  st_transform(.,3407)
+
+print(HKoutlinePROJECTED)
+
+#From sf to sp
+HKoutlineSP <- HKoutline %>%
+  as(., "Spatial")
+
+#From sp to sf
+HKoutlineSF <- HKoutlineSP %>%
+  st_as_sf()
+
+#histogram with shape
+plot(HKoutline$geom)
+
+HKoutSIMPLE<-HKoutline %>%
+  ms_simplify(.,keep=0.05)
+
+plot(HKoutSIMPLE$geom)
+
+################################################################################################################
+
+#Public Open areas
+hkdata_csv <- read_csv("data/HKGS_Dataset_Public-Open-Space_2020-01-23-1129-20_fullset.csv")
+hkdata_csv <- clean_names(hkdata_csv)
+hkdata_sf1 = st_as_sf(hkdata_csv, coords = c("easting_zuo_biao_dong","northing_zuo_biao_bei"), crs = 2326)
+qtm(hkdata_sf1)
+
+hkdata_sf1 <- distinct(hkdata_sf1)
+
+HKpublicopenSub <- hkdata_sf1[HKdistricts,]
+tmap_mode("view")
+tm_shape(HKdistricts) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(HKpublicopenSub) +
+  tm_dots(col = "blue")
+
+window <- as.owin(HKdistricts)
+plot(window)
+
+#create a ppp object
+HKpublicopenSub<- HKpublicopenSub %>%
+as(., 'Spatial')
+
+HKpublicopenSub.ppp <- ppp(x=HKpublicopenSub@coords[,1],
+y= HKpublicopenSub@coords[,2],
+window=window)
+
+HKpublicopenSub.ppp %>%
+plot(.,pch=16,cex=0.5,
+main="Public open areas in Hong Kong")
+
+#Kernel Density Esitmation
+HKpublicopenSub.ppp %>%
+density(., sigma=1000) %>%
+plot()
+
+################################################################################################################
+#Loading shapefile
+HKdistricts <- st_read(here::here("data","Hong_Kong_18_Districts-shp", "HKDistrict18.shp")) %>%
+  st_transform(.,3407)
+
+Blacksite <- read_csv("data/junctionblacksite_internet_eng_revised.csv") %>%
+  st_as_sf(., coords = c("latitude", "longitude"),
+           crs = 3407) %>%
+  st_transform(.,3407)
+
+
+
+#plot a map
+tmap_mode("view")
+tm_shape(HKdistricts) +
+tm_polygons( col = NA, alpha = 0.5) +
+tm_shape(Blacksite$geometry) +
+tm_dots(col = "blue")
+
+Joinfun <- function(data1, data2, data3){
+  
+output<- data1%>%
+  st_join(data2,.)%>%
+  add_count(TYPE, name=data3)
+    return(output)
+}
+
+HKBlacksite <- Joinfun(HKdistricts, Blacksite, "blacksite")
+
+tmap_mode("plot")
+breaks = c(0, 5, 12, 26, 34)
+
+tm1 <- tm_shape(HKBlacksite) +
+tm_polygons("Blacksite count", 
+              breaks=breaks,
+              palette="PuBu")+
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(a)", position=c(0,0.85), size=1.5)
+  
+tm2 <- tm_shape(HKdistricts) + 
+  tm_polygons("Blacksite count",
+              breaks=breaks, 
+              palette="PuBu") + 
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(b)", position=c(0,0.85), size=1.5)
+  
+tm3 <- tm_shape(Blacksite) + 
+  tm_polygons("Blacksite count",
+              breaks=breaks, 
+              palette="PuBu") + 
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(b)", position=c(0,0.85), size=1.5)
+
+t=tmap_arrange(tm1, tm2, tm3, ncol=2)
+t
