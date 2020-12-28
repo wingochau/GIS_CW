@@ -15,15 +15,22 @@ library(ggpubr)
 library(rmapshaper)
 library(janitor)
 library(sqldf)
+library(rgdal)
+library(tidymodels)
+library(stats)
+library(DiagrammeR)
 
 ################################################################################################################
 
-##Descriptive statistics
-#Population
 #Read csv
 hkpop_csv <- read_csv("data/Population_districts_092020.CSV")
 hkpop_csv <- clean_names(hkpop_csv)
+#Sort by alphabetic order
+hkpop_csv <- hkpop_csv[order(hkpop_csv$district_council_district),]
 
+hkpopdensity <- read_csv("data/Population_density_revised.csv")
+#Sort by alphabetic order
+hkpopdensity <- hkpopdensity[order(hkpopdensity$District),]
 
 #Read Hong Kong map
 HKdistricts <- st_read(here::here("data","Hong_Kong_18_Districts-shp", "HKDistrict18.shp")) %>%
@@ -31,8 +38,99 @@ HKdistricts <- st_read(here::here("data","Hong_Kong_18_Districts-shp", "HKDistri
 #Sort by alphabetic order
 HKdistricts <- HKdistricts[order(HKdistricts$ENAME),]
 
+################################################################################################################
 
-#Adjusting csv
+###Descriptive statistics
+
+##histogram
+#population histogram
+x <- hkpop_csv$both_sexes
+h<-hist(x, breaks=10, col="white", xlab="Hong Kong Population",
+   main="Histogram")
+xfit<-seq(min(x),max(x),length=40)
+yfit<-dnorm(xfit,mean=mean(x),sd=sd(x))
+yfit <- yfit*diff(h$mids[1:2])*length(x)
+lines(xfit, yfit, col="blue", lwd=3)
+
+plot(h)
+
+#2011 population density histogram
+y <- hkpopdensity$'2011'
+h2<-hist(y, breaks=10, col="white", xlab="Hong Kong Population Density",
+   main="Histogram")
+xfit<-seq(min(y),max(y),length=40)
+yfit<-dnorm(xfit,mean=mean(y),sd=sd(y))
+yfit <- yfit*diff(h2$mids[1:2])*length(y)
+lines(xfit, yfit, col="blue", lwd=3)
+
+plot(h2)
+
+#2016 population density histogram
+z <- hkpopdensity$'2016'
+h3<-hist(z, breaks=10, col="white", xlab="Hong Kong Population Density",
+   main="Histogram")
+xfit<-seq(min(z),max(z),length=40)
+yfit<-dnorm(xfit,mean=mean(z),sd=sd(z))
+yfit <- yfit*diff(h3$mids[1:2])*length(z)
+lines(xfit, yfit, col="blue", lwd=3)
+
+plot(h3)
+
+#clustering between income and population
+eleven <- hkpopdensity$'2011'
+sixteen <- hkpopdensity$'2016'
+dfVar <-  data.frame(eleven, sixteen)
+
+mydata <- dfVar %>%
+dplyr::select(c(eleven, sixteen))
+
+#scaling
+mydata <- scale(mydata)
+mydata <- data.frame(mydata)
+
+
+histplot <- ggplot(data=mydata, aes(x=eleven))
+histplot +geom_histogram(bins=15)
+
+histplot <- ggplot(data=mydata, aes(x=sixteen))
+histplot +geom_histogram(bins=10)
+
+fit <- mydata %>%
+kmeans(., 3, nstart=25)
+
+centroid <- tidy(fit)%>%
+print()%>%
+dplyr::select(eleven, sixteen)
+
+p <- ggplot(mydata,aes(eleven, sixteen))+
+  geom_point(aes(colour=factor(fit$cluster)))+
+  geom_point(data=centroid,aes(eleven, sixteen), size=7, shape=18)+ theme(legend.position="none")
+  
+HKdistricts <- fit %>% 
+  # 
+  augment(., HKdistricts)%>%
+  dplyr::select(ENAME, .cluster)%>%
+  #make sure the .cluster column is numeric
+  mutate(across(.cluster, as.numeric))%>%
+  # join the .cluster to our sf layer
+  left_join(HKdistricts, 
+            .,
+            by = c("ENAME" = "ENAME"))
+
+
+#now map our geodeomographic classification
+map <- ggplot(HKdistricts) + 
+  geom_sf(mapping = aes(fill=.cluster))+
+  scale_fill_continuous(breaks=c(1,2,3))
+
+map
+
+
+################################################################################################################
+
+###Population
+
+#Adjusting population csv
 HKpop <- hkpop_csv[,4] %>%
 mutate(hkpop_csv[,1]) %>%
 dplyr::rename(ENAME= 'district_council_district') %>%
@@ -77,7 +175,7 @@ tm1 <- tm_shape(Population) +
 
 ################################################################################################################
 
-#histogram with shape
+##histogram with shape##
 plot(HKoutline$geom)
 
 HKoutSIMPLE<-HKoutline %>%
@@ -85,18 +183,6 @@ HKoutSIMPLE<-HKoutline %>%
 
 plot(HKoutSIMPLE$geom)
 
-#histogram
-x <- hkpop_csv$both_sexes
-h<-hist(x, breaks=10, col="white", xlab="Hong Kong Population",
-   main="Histogram")
-xfit<-seq(min(x),max(x),length=40)
-yfit<-dnorm(xfit,mean=mean(x),sd=sd(x))
-yfit <- yfit*diff(h$mids[1:2])*length(x)
-lines(xfit, yfit, col="blue", lwd=3)
-
-#Faceted histogram
- <- HKpop %>%
-mutate(HKpop, Districts = ("Central & Western" +"Wan Chai"+ "Eastern"+ "Southern"+ "Yau Tsim Mong"+ "Sham Shui Po"+ "Kowloon City"+ "Wong Tai Sin"+ "Kwun Tong"+ "Kwai Tsing"+ "Tsuen Wan"+ "Tuen Mun"+ "Yuen Long"+ "North"+ "Tai Po"+ "Sha Tin"+ "Sai Kung"+ "Islands"))
 
 ################################################################################################################
 
@@ -164,60 +250,21 @@ density(., sigma=1000) %>%
 plot()
 
 ################################################################################################################
-#Loading shapefile
-HKdistricts <- st_read(here::here("data","Hong_Kong_18_Districts-shp", "HKDistrict18.shp")) %>%
-  st_transform(.,3407)
 
-Blacksite <- read_csv("data/junctionblacksite_internet_eng_revised.csv") %>%
-  st_as_sf(., coords = c("latitude", "longitude"),
-           crs = 3407) %>%
-  st_transform(.,3407)
+##flowchart
 
+DiagrammeR::grViz("digraph {
 
+graph [layout = dot, rankdir = LR]
 
-#plot a map
-tmap_mode("view")
-tm_shape(HKdistricts) +
-tm_polygons( col = NA, alpha = 0.5) +
-tm_shape(Blacksite$geometry) +
-tm_dots(col = "blue")
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = rectangle, style = filled, fillcolor = Linen]
 
-Joinfun <- function(data1, data2, data3){
-  
-output<- data1%>%
-  st_join(data2,.)%>%
-  add_count(TYPE, name=data3)
-    return(output)
-}
+data1 [label = 'Population \n Observation']
+data2 [label = 'Population Density \n Analysis']
+spaces [label =  'Comparison \n with \n Public Open \n Spaces', shape = circle, fillcolor = Beige, fixedsize = true, width = 1.7]
+cluster [label = 'Clustering \n Analysis']
 
-HKBlacksite <- Joinfun(HKdistricts, Blacksite, "blacksite")
-
-tmap_mode("plot")
-breaks = c(0, 5, 12, 26, 34)
-
-tm1 <- tm_shape(HKBlacksite) +
-tm_polygons("Blacksite count", 
-              breaks=breaks,
-              palette="PuBu")+
-  tm_legend(show=FALSE)+
-  tm_layout(frame=FALSE)+
-  tm_credits("(a)", position=c(0,0.85), size=1.5)
-  
-tm2 <- tm_shape(HKdistricts) + 
-  tm_polygons("Blacksite count",
-              breaks=breaks, 
-              palette="PuBu") + 
-  tm_legend(show=FALSE)+
-  tm_layout(frame=FALSE)+
-  tm_credits("(b)", position=c(0,0.85), size=1.5)
-  
-tm3 <- tm_shape(Blacksite) + 
-  tm_polygons("Blacksite count",
-              breaks=breaks, 
-              palette="PuBu") + 
-  tm_legend(show=FALSE)+
-  tm_layout(frame=FALSE)+
-  tm_credits("(b)", position=c(0,0.85), size=1.5)
-
-t=tmap_arrange(tm1, tm2, tm3, ncol=2)
-t
+# edge definitions with the node IDs
+data1  -> data2 -> cluster -> {spaces}
+}")
