@@ -52,8 +52,6 @@ yfit<-dnorm(xfit,mean=mean(x),sd=sd(x))
 yfit <- yfit*diff(h$mids[1:2])*length(x)
 lines(xfit, yfit, col="blue", lwd=3)
 
-plot(h)
-
 #2011 population density histogram
 y <- hkpopdensity$'2011'
 h2<-hist(y, breaks=10, col="white", xlab="Hong Kong Population Density",
@@ -63,8 +61,6 @@ yfit<-dnorm(xfit,mean=mean(y),sd=sd(y))
 yfit <- yfit*diff(h2$mids[1:2])*length(y)
 lines(xfit, yfit, col="blue", lwd=3)
 
-plot(h2)
-
 #2016 population density histogram
 z <- hkpopdensity$'2016'
 h3<-hist(z, breaks=10, col="white", xlab="Hong Kong Population Density",
@@ -73,8 +69,6 @@ xfit<-seq(min(z),max(z),length=40)
 yfit<-dnorm(xfit,mean=mean(z),sd=sd(z))
 yfit <- yfit*diff(h3$mids[1:2])*length(z)
 lines(xfit, yfit, col="blue", lwd=3)
-
-plot(h3)
 
 #clustering between income and population
 eleven <- hkpopdensity$'2011'
@@ -139,7 +133,6 @@ mutate(hkpop_csv[,9])
 
 #Change to SF
 hkpop_sf1 = st_as_sf(HKpop, coords = c("latitude","longitude"), crs = 2326)
-qtm(hkpop_sf1)
 
 #Function
 Joinfun <- function(data1, data2){
@@ -174,51 +167,10 @@ tm1 <- tm_shape(Population) +
 
 
 ################################################################################################################
-
-##histogram with shape##
-plot(HKoutline$geom)
-
-HKoutSIMPLE<-HKoutline %>%
-  ms_simplify(.,keep=0.05)
-
-plot(HKoutSIMPLE$geom)
-
-
-################################################################################################################
-
-#Hong Kong outline
-HKoutline <- st_read(here("data", "gadm36_HKG_gpkg", "gadm36_HKG.gpkg"), 
-                      layer='gadm36_HKG_0') %>% 
-  st_set_crs(4326)
-
-HKoutlinePROJECTED <- HKoutline %>%
-  st_transform(.,3407)
-
-print(HKoutlinePROJECTED)
-
-#From sf to sp
-HKoutlineSP <- HKoutline %>%
-  as(., "Spatial")
-
-#From sp to sf
-HKoutlineSF <- HKoutlineSP %>%
-  st_as_sf()
-
-#histogram with shape
-plot(HKoutline$geom)
-
-HKoutSIMPLE<-HKoutline %>%
-  ms_simplify(.,keep=0.05)
-
-plot(HKoutSIMPLE$geom)
-
-################################################################################################################
-
 #Public Open areas
 hkdata_csv <- read_csv("data/HKGS_Dataset_Public-Open-Space_2020-01-23-1129-20_fullset.csv")
 hkdata_csv <- clean_names(hkdata_csv)
 hkdata_sf1 = st_as_sf(hkdata_csv, coords = c("easting_zuo_biao_dong","northing_zuo_biao_bei"), crs = 2326)
-qtm(hkdata_sf1)
 
 hkdata_sf1 <- distinct(hkdata_sf1)
 
@@ -257,7 +209,6 @@ DiagrammeR::grViz("digraph {
 
 graph [layout = dot, rankdir = LR]
 
-# define the global styles of the nodes. We can override these in box if we wish
 node [shape = rectangle, style = filled, fillcolor = Linen]
 
 data1 [label = 'Population \n Observation']
@@ -265,6 +216,5 @@ data2 [label = 'Population Density \n Analysis']
 spaces [label =  'Comparison \n with \n Public Open \n Spaces', shape = circle, fillcolor = Beige, fixedsize = true, width = 1.7]
 cluster [label = 'Clustering \n Analysis']
 
-# edge definitions with the node IDs
 data1  -> data2 -> cluster -> {spaces}
 }")
